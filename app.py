@@ -1,85 +1,155 @@
 import streamlit as st
 import pandas as pd
-from utils.validate_data import audit_dataset
-from utils.load_data import load_dataset
+from utils.validate import audit_dataset
+from utils.load import load_dataset
+import os
+import seaborn as sns
+
+# List available sample datasets
+# Example: load and save a few
+datasets = ["titanic", "iris", "tips", "flights"]
+for name in datasets:
+    df = sns.load_dataset(name)
+    df.to_csv(f"assets/{name}.csv", index=False)
 
 st.set_page_config(page_title="Data Audit Tool", layout="wide")
 
-st.title("🔍 Data Audit & Validation Dashboard")
+st.title("Data Audit & Validation Dashboard")
 st.caption("Streamlit-based diagnostic tool that audits datasets — not alters them.")
 
-uploaded_file = st.file_uploader("Upload your dataset (CSV or Excel)", type=["csv", "xlsx"])
+# -----------------------------
+# SIDEBAR: DATA LOADING OPTIONS
+# -----------------------------
+st.sidebar.subheader("Load Data")
+data_choice = st.sidebar.radio("Choose Data Source", ["Upload Your Own", "Use Example Dataset"])
 
-if uploaded_file:
-    try:
+df = None
+if data_choice == "Use Example Dataset":
+    sample_files = [f for f in os.listdir("assets") if f.endswith((".csv", ".xlsx"))]
+    if sample_files:
+        sample_selected = st.sidebar.selectbox("Select a sample file:", sample_files)
+        df = load_dataset(f"assets/{sample_selected}")
+        st.success(f"Loaded example dataset: {sample_selected}")
+    else:
+        st.warning("No example datasets found in the assets folder.")
+else:
+    uploaded_file = st.sidebar.file_uploader("Upload your dataset (CSV or Excel)", type=["csv", "xlsx"])
+    if uploaded_file:
         df = load_dataset(uploaded_file)
-        st.success(f"✅ File loaded successfully: {uploaded_file.name}")
+        st.success(f"File loaded successfully: {uploaded_file.name}")
 
-        # Tabs
-        summary_tab, cleaning_tab, ml_tab = st.tabs(["📊 Summary", "🧼 Cleaning Standards", "🤖 ML Readiness"])
+# -----------------------------
+# MAIN APP LOGIC
+# -----------------------------
+if df is not None:
+    try:
+        report = audit_dataset(df)
+        summary_tab, cleaning_tab, readiness_tab = st.tabs(["Summary", "Data Cleaning Standards", "Readiness"])
 
-        # ===============================
-        # TAB 1: SUMMARY
-        # ===============================
+        # SUMMARY TAB
         with summary_tab:
             st.subheader("Dataset Summary")
-            st.markdown("A quick overview of structure, missing values, and data types.")
-            
-            report = audit_dataset(df)
-
+            st.markdown("Overview of structure, missing values, and data types.")
             col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Rows", report["shape"][0])
-            with col2:
-                st.metric("Columns", report["shape"][1])
+            with col1: st.metric("Rows", report["shape"][0])
+            with col2: st.metric("Columns", report["shape"][1])
 
-            st.write("**Data Types**")
-            st.json(report["data_types"])
+            st.write("Data Types and Classification")
+            st.dataframe(pd.DataFrame({
+                "Column": df.columns,
+                "Data Type": [report["data_types"][c] for c in df.columns],
+                "Category": [report["column_classification"][c] for c in df.columns]
+            }))
 
-            st.write("**Missing Values (%)**")
+            st.write("Missing Values (%)")
             missing_percent = (df.isnull().mean() * 100).round(2)
             st.bar_chart(missing_percent)
 
-            st.caption("💡 Tip: Columns with >30% missing data may need imputation or removal.")
+            st.write("Non-Conforming Columns")
+            st.dataframe(pd.DataFrame.from_dict(report["type_conformity_filtered"], orient="index", columns=["Assessment"]))
 
-        # ===============================
-        # TAB 2: DATA CLEANING STANDARDS
-        # ===============================
+            st.caption("Columns with high missing data or misclassified types may affect analysis quality.")
+
+        # CLEANING TAB
         with cleaning_tab:
             st.subheader("Data Cleaning Standards & Summary")
-            st.markdown("Summary of missing values, averages, and outlier detection readiness.")
+            null_summary = df.isnull().sum()
+            null_summary = null_summary[null_summary > 0]
+            if not null_summary.empty:
+                st.write("Columns with Missing Values")
+                st.dataframe(null_summary.rename("Null Count"))
+            else:
+                st.success("No missing values found.")
 
-            st.write("**Null Values Summary**")
-            st.dataframe(df.isnull().sum().reset_index().rename(columns={0: "Null Count"}))
-
-            st.write("**Numeric Columns Summary (Mean, Std, etc.)**")
+            st.write("Numeric Columns Summary")
             st.dataframe(df.describe())
 
-            st.caption("💡 Tip: Consider imputing numeric columns using mean/median if missing <10%, else review column importance.")
+            st.write("Outlier Overview")
+            st.dataframe(pd.DataFrame.from_dict(report["outliers"], orient="index"))
 
-        # ===============================
-        # TAB 3: ML READINESS
-        # ===============================
-        with ml_tab:
-            st.subheader("Machine Learning Readiness Overview")
-            st.markdown("Evaluates dataset structure and readiness for ML models.")
+            st.subheader("Additional Data Quality Issues")
+            st.json(report["additional_quality_issues"])
 
-            st.metric("ML Readiness Score", report["ml_readiness_score"])
+        # READINESS TAB
+        with readiness_tab:
+            st.subheader("Readiness Overview")
+            readiness_type = st.radio("Select Readiness Type", ["Analysis", "Dashboard", "Machine Learning"], horizontal=True)
 
-            st.write("**Feature Insights**")
-            st.json({
-                "Numeric Columns": list(df.select_dtypes(include=['number']).columns),
-                "Categorical Columns": list(df.select_dtypes(include=['object', 'category']).columns)
-            })
+            if readiness_type == "Analysis":
+                st.write("Focus: Clean, complete, interpretable data for exploration and descriptive analytics.")
+                st.metric("Readiness Score", report["readiness_score"])
+                st.caption(report["readiness_interpretation"])
 
-            st.markdown("### Model Compatibility Check")
-            st.info("💡 For example, tree-based models (like Random Forest) handle missing values better than linear regression. Upcoming versions will analyze per-model readiness.")
+            elif readiness_type == "Dashboard":
+                dash = report["dashboard_readiness"]
+                st.write("Focus: Temporal, categorical, and PII consistency for business dashboards.")
+                st.metric("Dashboard Readiness Score", dash["dashboard_readiness_score"])
+                st.caption(dash["interpretation"])
+                st.write("Detected Temporal Columns:", dash["temporal_columns"])
+                st.write("Detected Categorical Columns:", dash["categorical_columns"])
+                st.write("Detected PII Columns:", dash["pii_columns"])
 
-        # ===============================
-        # FOOTER
-        # ===============================
-        st.markdown("---")
-        st.markdown("Need professional data preparation? [Hire me for dataset correction and ML prep.](mailto:mail@pandeakshat.com)")
+            elif readiness_type == "Machine Learning":
+                st.write("Focus: Suitability for ML algorithms such as regression, classification, or clustering.")
+                st.metric("Overall ML Readiness Score", report["readiness_score"])
+                st.caption(report["readiness_interpretation"])
+                st.subheader("Model-Specific Readiness")
+                model_df = pd.DataFrame([
+                    {"Model": m, "Score": report["model_readiness"][m]["score"], "Interpretation": report["model_readiness"][m]["interpretation"]}
+                    for m in report["model_readiness"]
+                ])
+                st.dataframe(model_df)
+
+        # FLOATING CONTACT BAR
+        st.markdown("""
+            <style>
+            .contact-bar {
+                position: fixed;
+                bottom: 20px;
+                right: 25px;
+                background-color: #2c3e50;
+                color: white;
+                padding: 10px 18px;
+                border-radius: 8px;
+                font-size: 15px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+                z-index: 100;
+            }
+            .contact-bar a {
+                color: #ffffff;
+                text-decoration: none;
+                font-weight: 500;
+            }
+            .contact-bar:hover {
+                background-color: #34495e;
+            }
+            </style>
+            <div class="contact-bar">
+                For Professional Assistance — <a href="mailto:mail@pandeakshat.com" target="_blank">Contact</a>
+            </div>
+        """, unsafe_allow_html=True)
 
     except Exception as e:
-        st.error(f"⚠️ {e}")
+        st.error(f"Error processing dataset: {e}")
+else:
+    st.info("Please upload a dataset or select an example to begin.")
