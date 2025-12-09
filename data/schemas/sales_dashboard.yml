@@ -1,0 +1,32 @@
+target_name: "Sales Dashboard"
+description: "Standard schema for Order, Sales, and Profit analysis."
+url: "http://localhost:8503" # Replace with actual URL
+columns:
+  - name: "Order Date"
+    regex: "(?i)order.*date|(?i)date"
+    type: "datetime"
+    required: true
+  - name: "Sales"
+    regex: "(?i)sales|(?i)revenue|(?i)amount"
+    type: "numeric"
+    required: true
+  - name: "Profit"
+    regex: "(?i)profit|(?i)earnings|(?i)net|(?i)margin"
+    type: "numeric"
+    required: true
+  - name: "Quantity"
+    regex: "(?i)qty|(?i)quantity|(?i)units"
+    type: "numeric"
+    required: true
+  - name: "Category"
+    regex: "(?i)category|(?i)type"
+    type: "string"
+    required: true
+  - name: "Region"
+    regex: "(?i)region|(?i)area|(?i)zone"
+    type: "string"
+    required: true
+  - name: "Order ID"
+    regex: "(?i)order.*id|(?i)trans.*id"
+    type: "string"
+    required: true

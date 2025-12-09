@@ -1,0 +1,32 @@
+target_name: "Customer Intelligence"
+description: "Validation for Churn, Segmentation, and Sentiment analysis."
+url: "http://localhost:8502" # Replace with actual URL
+columns:
+  - name: "CustomerID"
+    regex: "(?i)(customer|client|user|account)\\s*[_.]?(id|no|code|key)"
+    type: "string"
+    required: true
+  - name: "InvoiceDate"
+    regex: "(?i)(invoice|txn|transaction|purchase)\\s*[_.]?date"
+    type: "datetime"
+    required: true
+  - name: "TotalAmount"
+    regex: "(?i)(total)?\\s*[_.]?(amount|amt|price|value|spend|cost)"
+    type: "numeric"
+    required: true
+  - name: "Churn"
+    regex: "(?i)^churn$|^target$|^exited$"
+    type: "string"
+    required: false
+  - name: "Tenure"
+    regex: "(?i)tenure|months?|duration"
+    type: "numeric"
+    required: false
+  - name: "Age"
+    regex: "(?i)\\bage\\b"
+    type: "numeric"
+    required: false
+  - name: "Location"
+    regex: "(?i)route|destination|flight\\s*path|country|region|state|city|province|zip|postal"
+    type: "string"
+    required: false
